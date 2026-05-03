@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p \"C:\\\\Users\\\\sandax\\\\Desktop\\\\dev\\\\zGeoguesser\\\\app\\\\api\\\\users\\\\[username]\")",
+      "Bash(mkdir -p \"C:\\\\Users\\\\sandax\\\\Desktop\\\\dev\\\\zGeoguesser\\\\app\\\\api\\\\rooms\\\\[code]\\\\join\")",
+      "Bash(mkdir -p \"C:\\\\Users\\\\sandax\\\\Desktop\\\\dev\\\\zGeoguesser\\\\app\\\\api\\\\rooms\\\\[code]\\\\guess\")",
+      "Bash(mkdir -p \"C:\\\\Users\\\\sandax\\\\Desktop\\\\dev\\\\zGeoguesser\\\\app\\\\api\\\\rooms\\\\[code]\\\\next\")",
+      "Bash(npx tsc *)",
+      "Bash(npm install *)",
+      "Bash(npx next *)",
+      "Bash(npx vercel *)",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ]
+  }
+}

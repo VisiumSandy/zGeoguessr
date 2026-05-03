@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GeoGuessr — Multijoueur</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --green: #4caf50; --green-d: #388e3c;
+  --blue: #64b5f6; --yellow: #ffd54f; --red: #ef5350;
+  --p1: #42a5f5; --p2: #ef5350;
+  --bg: #111827; --bg2: #1f2937; --bg3: #374151;
+  --text: #f9fafb; --muted: #9ca3af; --border: rgba(255,255,255,0.1);
+}
+
+html, body { width:100%; height:100%; font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); overflow:hidden; }
+
+/* ══ SETUP SCREEN ══ */
+#setup-screen {
+  position:fixed; inset:0; z-index:300;
+  background: radial-gradient(ellipse at 30% 40%, #0f2027 0%, #111827 70%);
+  display:flex; align-items:center; justify-content:center;
+}
+.setup-card {
+  background:var(--bg2); border-radius:24px; padding:44px;
+  max-width:480px; width:94%; border:1px solid var(--border);
+  text-align:center;
+}
+.setup-card .globe { font-size:72px; animation:float 3s ease-in-out infinite; }
+@keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-12px)} }
+.setup-card h1 { font-size:42px; font-weight:900; letter-spacing:-2px; margin:12px 0 4px; }
+.setup-card h1 span { color:var(--blue); }
+.setup-card .tagline { color:var(--muted); font-size:14px; margin-bottom:28px; }
+
+.mode-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:24px; }
+.mode-btn {
+  background:var(--bg3); border:2px solid transparent; border-radius:14px;
+  padding:18px 12px; cursor:pointer; transition:all .2s; color:var(--text);
+}
+.mode-btn:hover { border-color:var(--blue); background:rgba(100,181,246,.08); }
+.mode-btn.active { border-color:var(--blue); background:rgba(100,181,246,.15); }
+.mode-btn .icon { font-size:28px; margin-bottom:8px; }
+.mode-btn .label { font-size:14px; font-weight:700; }
+.mode-btn .desc { font-size:11px; color:var(--muted); margin-top:4px; }
+
+.diff-row { display:flex; gap:10px; margin-bottom:24px; }
+.diff-btn {
+  flex:1; padding:11px; border-radius:10px; border:2px solid transparent;
+  background:var(--bg3); color:var(--text); cursor:pointer; font-size:13px;
+  font-weight:600; transition:all .2s;
+}
+.diff-btn:hover { border-color:var(--yellow); }
+.diff-btn.active { border-color:var(--yellow); background:rgba(255,213,79,.1); color:var(--yellow); }
+
+.players-section { margin-bottom:24px; text-align:left; }
+.players-section label { font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); display:block; margin-bottom:8px; }
+.player-input-row { display:flex; gap:10px; align-items:center; margin-bottom:10px; }
+.player-dot { width:12px; height:12px; border-radius:50%; flex-shrink:0; }
+.player-input {
+  flex:1; background:var(--bg3); border:1px solid var(--border);
+  border-radius:8px; padding:10px 14px; color:var(--text); font-size:14px;
+  outline:none; transition:border .2s;
+}
+.player-input:focus { border-color:var(--blue); }
+
+.rounds-row { display:flex; gap:10px; margin-bottom:28px; align-items:center; }
+.rounds-row label { font-size:13px; color:var(--muted); flex-shrink:0; }
+.rounds-select {
+  background:var(--bg3); border:1px solid var(--border); border-radius:8px;
+  padding:8px 14px; color:var(--text); font-size:14px; cursor:pointer; outline:none;
+}
+
+.btn-play {
+  width:100%; padding:16px; background:var(--green); color:#fff; border:none;
+  border-radius:12px; font-size:18px; font-weight:800; cursor:pointer;
+  transition:all .2s; letter-spacing:.3px;
+}
+.btn-play:hover { background:var(--green-d); transform:scale(1.02); }
+
+/* ══ JEU ══ */
+#game { position:relative; width:100%; height:100vh; display:none; }
+#sv-container { position:absolute; inset:0; }
+
+/* Bandeau joueur actif */
+#player-banner {
+  position:absolute; top:14px; left:50%; transform:translateX(-50%);
+  z-index:30; display:flex; align-items:center; gap:0;
+  background:rgba(0,0,0,.82); backdrop-filter:blur(14px);
+  border-radius:40px; border:1px solid var(--border); overflow:hidden;
+}
+.hud-cell { padding:10px 20px; display:flex; flex-direction:column; align-items:center; border-right:1px solid var(--border); }
+.hud-cell:last-child { border-right:none; }
+.hud-lbl { font-size:10px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin-bottom:2px; }
+.hud-val { font-size:16px; font-weight:700; }
+#timer { font-size:22px; font-weight:800; font-variant-numeric:tabular-nums; }
+#timer.warn { color:var(--red); animation:blink .5s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+#active-player-name { font-size:15px; font-weight:800; }
+
+/* Scores flottants */
+#scores-panel {
+  position:absolute; top:14px; right:14px; z-index:30;
+  background:rgba(0,0,0,.78); backdrop-filter:blur(12px);
+  border-radius:14px; border:1px solid var(--border); padding:12px 16px;
+  min-width:160px;
+}
+.score-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:4px 0; }
+.score-row .sname { font-size:13px; font-weight:600; }
+.score-row .spts { font-size:14px; font-weight:800; }
+.score-row.current-player .sname::after { content:' ▶'; font-size:10px; opacity:.6; }
+
+/* ══ CARTE ══ */
+#map-panel {
+  position:absolute; bottom:0; right:0; z-index:20;
+  display:flex; flex-direction:column;
+  transition:width .3s cubic-bezier(.4,0,.2,1);
+}
+#map-panel.sm { width:300px; }
+#map-panel.lg { width:520px; }
+#map-wrapper {
+  border-radius:14px 14px 0 0; overflow:hidden; position:relative;
+  border:2px solid rgba(255,255,255,.18); border-bottom:none;
+  box-shadow:0 -6px 40px rgba(0,0,0,.7);
+  transition:height .3s cubic-bezier(.4,0,.2,1);
+}
+#map-panel.sm #map-wrapper { height:200px; }
+#map-panel.lg #map-wrapper { height:360px; }
+#minimap { width:100%; height:100%; }
+.map-top { position:absolute; top:8px; right:8px; z-index:5; }
+.map-btn {
+  background:rgba(0,0,0,.75); border:1px solid rgba(255,255,255,.2);
+  color:#fff; padding:5px 10px; border-radius:7px; cursor:pointer; font-size:13px;
+}
+.map-btn:hover { background:rgba(255,255,255,.2); }
+#map-hint { position:absolute; bottom:8px; left:10px; font-size:11px; color:rgba(255,255,255,.4); pointer-events:none; }
+#guess-btn {
+  width:100%; padding:15px; border:none; cursor:pointer;
+  color:#fff; font-size:16px; font-weight:700;
+  border-radius:0 0 14px 14px; transition:background .2s, transform .1s;
+  letter-spacing:.3px;
+}
+#guess-btn:hover:not(:disabled) { filter:brightness(1.1); }
+#guess-btn:active:not(:disabled) { transform:scale(.98); }
+#guess-btn:disabled { background:#2a2a3a !important; color:#555; cursor:not-allowed; }
+
+/* ══ RÉSULTAT ROUND ══ */
+#result-overlay {
+  display:none; position:fixed; inset:0; z-index:100;
+  background:rgba(0,0,0,.88); align-items:center; justify-content:center;
+}
+#result-overlay.show { display:flex; animation:fadein .3s; }
+@keyframes fadein { from{opacity:0} to{opacity:1} }
+#result-card {
+  background:var(--bg2); border-radius:20px; padding:32px;
+  max-width:700px; width:96%; border:1px solid var(--border);
+  max-height:92vh; overflow-y:auto; animation:slideup .3s;
+}
+@keyframes slideup { from{transform:translateY(24px);opacity:0} to{transform:translateY(0);opacity:1} }
+#result-card h2 { font-size:13px; text-transform:uppercase; letter-spacing:2px; color:var(--muted); margin-bottom:6px; }
+#result-place { font-size:22px; font-weight:700; margin-bottom:20px; }
+
+.players-results { display:grid; gap:12px; margin-bottom:20px; }
+.player-result {
+  background:rgba(255,255,255,.05); border-radius:12px; padding:16px 20px;
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+}
+.player-result .pr-name { font-size:15px; font-weight:700; }
+.player-result .pr-dist { font-size:13px; color:var(--muted); }
+.player-result .pr-pts { font-size:22px; font-weight:800; }
+.player-result.winner { border:2px solid var(--yellow); }
+.player-result .crown { font-size:20px; margin-right:6px; }
+
+#res-map-wrap { width:100%; height:220px; border-radius:12px; overflow:hidden; margin-bottom:16px; }
+#res-map { width:100%; height:100%; }
+
+.legend { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; font-size:12px; color:var(--muted); margin-bottom:20px; }
+.dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:5px; vertical-align:middle; }
+
+.btn-next { width:100%; padding:14px; background:#5c6bc0; color:#fff; border:none; border-radius:10px; font-size:16px; font-weight:700; cursor:pointer; }
+.btn-next:hover { background:#3f51b5; }
+
+/* ══ FIN ══ */
+#end-overlay {
+  display:none; position:fixed; inset:0; z-index:110;
+  background:rgba(0,0,0,.95); align-items:center; justify-content:center;
+}
+#end-overlay.show { display:flex; animation:fadein .3s; }
+#end-card {
+  background:var(--bg2); border-radius:20px; padding:44px;
+  max-width:560px; width:96%; border:1px solid var(--border);
+  text-align:center; max-height:92vh; overflow-y:auto;
+  animation:slideup .4s;
+}
+#end-card h1 { font-size:28px; margin-bottom:4px; }
+#end-winner-badge { font-size:56px; margin:16px 0 8px; }
+#end-winner-name { font-size:28px; font-weight:900; margin-bottom:4px; }
+#end-winner-sub { font-size:14px; color:var(--muted); margin-bottom:24px; }
+
+.final-scores { margin-bottom:24px; }
+.final-row {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:12px 0; border-bottom:1px solid rgba(255,255,255,.07); font-size:15px;
+}
+.final-row .fname { font-weight:700; }
+.final-row .fpts { font-size:20px; font-weight:800; }
+.final-row.first .fpts { color:var(--yellow); }
+
+.rounds-detail { text-align:left; margin-bottom:24px; }
+.rounds-detail h3 { font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin-bottom:12px; }
+.rdetail-row { display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid rgba(255,255,255,.05); font-size:13px; color:#ccc; }
+.rdetail-row .rdpts { color:var(--yellow); font-weight:700; }
+
+.btn-replay { background:var(--green); color:#fff; border:none; padding:15px 52px; border-radius:12px; font-size:17px; font-weight:800; cursor:pointer; transition:all .2s; margin-right:10px; }
+.btn-replay:hover { background:var(--green-d); transform:scale(1.03); }
+.btn-home { background:transparent; color:var(--muted); border:1px solid var(--border); padding:15px 28px; border-radius:12px; font-size:15px; cursor:pointer; transition:all .2s; }
+.btn-home:hover { color:#fff; border-color:#fff; }
+
+/* ══ TRANSITION JOUEUR ══ */
+#transition-overlay {
+  display:none; position:fixed; inset:0; z-index:200;
+  background:#111827; align-items:center; justify-content:center; flex-direction:column; gap:20px;
+}
+#transition-overlay.show { display:flex; animation:fadein .2s; }
+.trans-emoji { font-size:72px; }
+.trans-title { font-size:28px; font-weight:800; }
+.trans-sub { font-size:16px; color:var(--muted); }
+.btn-ready { background:var(--green); color:#fff; border:none; padding:16px 52px; border-radius:12px; font-size:17px; font-weight:700; cursor:pointer; margin-top:8px; }
+.btn-ready:hover { background:var(--green-d); }
+
+::-webkit-scrollbar { width:4px; }
+::-webkit-scrollbar-thumb { background:rgba(255,255,255,.2); border-radius:2px; }
+</style>
+</head>
+<body>
+
+<!-- ══════════ SETUP ══════════ -->
+<div id="setup-screen">
+  <div class="setup-card">
+    <div class="globe">🌍</div>
+    <h1>Geo<span>Guessr</span></h1>
+    <p class="tagline">Multijoueur · Street View · Monde entier</p>
+
+    <div class="mode-grid">
+      <div class="mode-btn active" onclick="selectMode('solo')" id="mode-solo">
+        <div class="icon">🧍</div>
+        <div class="label">Solo</div>
+        <div class="desc">Joue seul</div>
+      </div>
+      <div class="mode-btn" onclick="selectMode('multi')" id="mode-multi">
+        <div class="icon">👥</div>
+        <div class="label">Multijoueur</div>
+        <div class="desc">Tour par tour</div>
+      </div>
+    </div>
+
+    <div id="players-section" class="players-section" style="display:none">
+      <label>Noms des joueurs</label>
+      <div class="player-input-row">
+        <div class="player-dot" style="background:var(--p1)"></div>
+        <input class="player-input" id="p1-name" type="text" placeholder="Joueur 1" value="Joueur 1" maxlength="16">
+      </div>
+      <div class="player-input-row">
+        <div class="player-dot" style="background:var(--p2)"></div>
+        <input class="player-input" id="p2-name" type="text" placeholder="Joueur 2" value="Joueur 2" maxlength="16">
+      </div>
+    </div>
+
+    <div style="margin-bottom:14px;text-align:left">
+      <label style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);display:block;margin-bottom:8px">Difficulté</label>
+      <div class="diff-row">
+        <button class="diff-btn" onclick="selectDiff('easy')" id="diff-easy">🌆 Facile<br><span style="font-size:10px;font-weight:400;color:var(--muted)">Grandes villes</span></button>
+        <button class="diff-btn active" onclick="selectDiff('medium')" id="diff-medium">🗺️ Moyen<br><span style="font-size:10px;font-weight:400;color:var(--muted)">Villes & zones</span></button>
+        <button class="diff-btn" onclick="selectDiff('hard')" id="diff-hard">🔥 Difficile<br><span style="font-size:10px;font-weight:400;color:var(--muted)">Routes & campagne</span></button>
+      </div>
+    </div>
+
+    <div class="rounds-row">
+      <label>Nombre de rounds :</label>
+      <select class="rounds-select" id="rounds-select">
+        <option value="3">3 rounds</option>
+        <option value="5" selected>5 rounds</option>
+        <option value="8">8 rounds</option>
+        <option value="10">10 rounds</option>
+      </select>
+    </div>
+
+    <button class="btn-play" onclick="startGame()">🚀 Jouer !</button>
+  </div>
+</div>
+
+<!-- ══════════ JEU ══════════ -->
+<div id="game">
+  <div id="sv-container"></div>
+
+  <div id="player-banner">
+    <div class="hud-cell">
+      <div class="hud-lbl">Joue</div>
+      <div class="hud-val" id="active-player-name">—</div>
+    </div>
+    <div class="hud-cell">
+      <div class="hud-lbl">Round</div>
+      <div class="hud-val"><span id="round-num">1</span>/<span id="round-total">5</span></div>
+    </div>
+    <div class="hud-cell">
+      <div class="hud-lbl">Temps</div>
+      <div id="timer">120</div>
+    </div>
+  </div>
+
+  <div id="scores-panel"></div>
+
+  <div id="map-panel" class="sm">
+    <div id="map-wrapper">
+      <div id="minimap"></div>
+      <div class="map-top"><button class="map-btn" onclick="toggleMap()">⛶</button></div>
+      <div id="map-hint">Cliquez pour placer votre pin</div>
+    </div>
+    <button id="guess-btn" onclick="submitGuess()" disabled>📍 Valider ma position</button>
+  </div>
+</div>
+
+<!-- ══════════ TRANSITION JOUEUR ══════════ -->
+<div id="transition-overlay">
+  <div class="trans-emoji" id="trans-emoji">🎯</div>
+  <div class="trans-title" id="trans-title">C'est ton tour !</div>
+  <div class="trans-sub" id="trans-sub">Prépare-toi à deviner</div>
+  <button class="btn-ready" id="btn-ready" onclick="startPlayerTurn()">Je suis prêt !</button>
+</div>
+
+<!-- ══════════ RÉSULTAT ROUND ══════════ -->
+<div id="result-overlay">
+  <div id="result-card">
+    <h2>Résultat — Round <span id="res-round">1</span></h2>
+    <div id="result-place">—</div>
+    <div class="players-results" id="players-results"></div>
+    <div id="res-map-wrap"><div id="res-map"></div></div>
+    <div class="legend" id="res-legend"></div>
+    <button class="btn-next" id="next-btn" onclick="nextTurn()">Continuer →</button>
+  </div>
+</div>
+
+<!-- ══════════ FIN ══════════ -->
+<div id="end-overlay">
+  <div id="end-card">
+    <h1>Partie terminée !</h1>
+    <div id="end-winner-badge">🏆</div>
+    <div id="end-winner-name">—</div>
+    <div id="end-winner-sub">—</div>
+    <div class="final-scores" id="final-scores"></div>
+    <div class="rounds-detail" id="rounds-detail"></div>
+    <div>
+      <button class="btn-replay" onclick="startGame()">🔄 Rejouer</button>
+      <button class="btn-home" onclick="goHome()">⚙️ Menu</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+//  SPOTS — 3 niveaux de difficulté
+// ═══════════════════════════════════════════
+const SPOTS = {
+  easy: [
+    { lat:48.8584,  lng:2.2945,   label:"Paris, France",           flag:"🇫🇷" },
+    { lat:51.5007,  lng:-0.1246,  label:"Londres, Royaume-Uni",    flag:"🇬🇧" },
+    { lat:41.8902,  lng:12.4922,  label:"Rome, Italie",            flag:"🇮🇹" },
+    { lat:40.7580,  lng:-73.9855, label:"New York, États-Unis",    flag:"🇺🇸" },
+    { lat:35.6762,  lng:139.6503, label:"Tokyo, Japon",            flag:"🇯🇵" },
+    { lat:-33.8688, lng:151.2093, label:"Sydney, Australie",       flag:"🇦🇺" },
+    { lat:48.2082,  lng:16.3738,  label:"Vienne, Autriche",        flag:"🇦🇹" },
+    { lat:55.7558,  lng:37.6173,  label:"Moscou, Russie",          flag:"🇷🇺" },
+    { lat:25.2048,  lng:55.2708,  label:"Dubaï, Émirats arabes",   flag:"🇦🇪" },
+    { lat:-22.9068, lng:-43.1729, label:"Rio de Janeiro, Brésil",  flag:"🇧🇷" },
+    { lat:37.9715,  lng:23.7267,  label:"Athènes, Grèce",          flag:"🇬🇷" },
+    { lat:41.3851,  lng:2.1734,   label:"Barcelone, Espagne",      flag:"🇪🇸" },
+  ],
+  medium: [
+    { lat:44.4268,  lng:26.1025,  label:"Bucarest, Roumanie",      flag:"🇷🇴" },
+    { lat:59.4370,  lng:24.7536,  label:"Tallinn, Estonie",        flag:"🇪🇪" },
+    { lat:33.8869,  lng:9.5375,   label:"Tunisie centrale",        flag:"🇹🇳" },
+    { lat:-13.1631, lng:-72.5449, label:"Machu Picchu, Pérou",     flag:"🇵🇪" },
+    { lat:27.1751,  lng:78.0421,  label:"Agra, Inde",              flag:"🇮🇳" },
+    { lat:-4.4419,  lng:15.2663,  label:"Kinshasa, RDC",           flag:"🇨🇩" },
+    { lat:9.0579,   lng:7.4951,   label:"Abuja, Nigeria",          flag:"🇳🇬" },
+    { lat:-17.7333, lng:168.3219, label:"Vanuatu, Pacifique",      flag:"🇻🇺" },
+    { lat:47.8864,  lng:106.9057, label:"Oulan-Bator, Mongolie",   flag:"🇲🇳" },
+    { lat:15.5527,  lng:32.5324,  label:"Khartoum, Soudan",        flag:"🇸🇩" },
+    { lat:-8.8390,  lng:13.2894,  label:"Luanda, Angola",          flag:"🇦🇴" },
+    { lat:12.3714,  lng:-1.5197,  label:"Ouagadougou, Burkina",    flag:"🇧🇫" },
+    { lat:64.1355,  lng:-21.8954, label:"Reykjavik, Islande",      flag:"🇮🇸" },
+    { lat:-25.2744, lng:133.7751, label:"Outback, Australie",      flag:"🇦🇺" },
+  ],
+  hard: [
+    { lat:60.1695,  lng:24.9354,  label:"Route côtière, Finlande", flag:"🇫🇮" },
+    { lat:-34.6037, lng:-58.3816, label:"Suburb Buenos Aires",     flag:"🇦🇷" },
+    { lat:43.2965,  lng:5.3698,   label:"Zone industrielle Marseille", flag:"🇫🇷" },
+    { lat:50.4501,  lng:30.5234,  label:"Quartier résidentiel Kyiv", flag:"🇺🇦" },
+    { lat:6.3702,   lng:2.3912,   label:"Route rurale Bénin",      flag:"🇧🇯" },
+    { lat:-15.7942, lng:-47.8822, label:"Banlieue Brasilia",       flag:"🇧🇷" },
+    { lat:37.5326,  lng:127.0246, label:"Suburb Seoul",            flag:"🇰🇷" },
+    { lat:39.9042,  lng:116.4074, label:"Périphérie Pékin",        flag:"🇨🇳" },
+    { lat:55.9533,  lng:-3.1883,  label:"Quartier Edinburgh",      flag:"🇬🇧" },
+    { lat:-1.2867,  lng:36.8219,  label:"Route Kenya",             flag:"🇰🇪" },
+    { lat:28.6448,  lng:77.2167,  label:"Rue New Delhi",           flag:"🇮🇳" },
+    { lat:14.6928,  lng:-17.4467, label:"Quartier Dakar",          flag:"🇸🇳" },
+    { lat:53.9006,  lng:27.5590,  label:"Route Biélorussie",       flag:"🇧🇾" },
+    { lat:-33.4489, lng:-70.6693, label:"Banlieue Santiago",       flag:"🇨🇱" },
+    { lat:45.4642,  lng:9.1900,   label:"Périphérie Milan",        flag:"🇮🇹" },
+    { lat:23.1291,  lng:113.2644, label:"Rue Guangzhou",           flag:"🇨🇳" },
+    { lat:19.0760,  lng:72.8777,  label:"Quartier Mumbai",         flag:"🇮🇳" },
+    { lat:-26.2041, lng:28.0473,  label:"Suburb Johannesburg",     flag:"🇿🇦" },
+    { lat:41.0082,  lng:28.9784,  label:"Rue Istanbul",            flag:"🇹🇷" },
+    { lat:60.3913,  lng:5.3221,   label:"Route Norvège",           flag:"🇳🇴" },
+  ]
+};
+
+// ═══════════════════════════════════════════
+//  ÉTAT GLOBAL
+// ═══════════════════════════════════════════
+const G = {
+  mode: 'solo', diff: 'medium', totalRounds: 5,
+  players: [], currentPlayerIdx: 0, currentRound: 0,
+  spots: [], roundSpots: [],
+  timerID: null, timeLeft: 120, mapExpanded: false,
+  miniMap: null, marker: null, resMap: null,
+  // guesses[round][playerIdx] = {lat,lng}
+  guesses: [],
+};
+
+const PLAYER_COLORS = ['#42a5f5', '#ef5350', '#66bb6a', '#ffa726'];
+const TIMER_DURATION = { easy: 150, medium: 120, hard: 90 };
+
+// ═══════════════════════════════════════════
+//  SETUP
+// ═══════════════════════════════════════════
+function selectMode(m) {
+  G.mode = m;
+  document.getElementById('mode-solo').classList.toggle('active', m==='solo');
+  document.getElementById('mode-multi').classList.toggle('active', m==='multi');
+  document.getElementById('players-section').style.display = m==='multi' ? 'block' : 'none';
+}
+
+function selectDiff(d) {
+  G.diff = d;
+  ['easy','medium','hard'].forEach(x => document.getElementById('diff-'+x).classList.toggle('active', x===d));
+}
+
+function startGame() {
+  const p1 = document.getElementById('p1-name').value.trim() || 'Joueur 1';
+  const p2 = document.getElementById('p2-name').value.trim() || 'Joueur 2';
+  G.totalRounds = parseInt(document.getElementById('rounds-select').value);
+
+  if (G.mode === 'solo') {
+    G.players = [{ name: p1, color: PLAYER_COLORS[0], totalScore: 0, roundScores: [] }];
+  } else {
+    G.players = [
+      { name: p1, color: PLAYER_COLORS[0], totalScore: 0, roundScores: [] },
+      { name: p2, color: PLAYER_COLORS[1], totalScore: 0, roundScores: [] },
+    ];
+  }
+
+  G.currentRound = 0;
+  G.currentPlayerIdx = 0;
+  G.guesses = Array.from({ length: G.totalRounds }, () => ({}));
+  G.players.forEach(p => { p.totalScore = 0; p.roundScores = []; });
+
+  const pool = [...SPOTS[G.diff]].sort(() => Math.random() - .5);
+  G.roundSpots = pool.slice(0, G.totalRounds);
+
+  document.getElementById('setup-screen').style.display = 'none';
+  document.getElementById('end-overlay').classList.remove('show');
+  document.getElementById('result-overlay').classList.remove('show');
+  document.getElementById('game').style.display = 'block';
+  document.getElementById('round-total').textContent = G.totalRounds;
+
+  if (!window.google) {
+    loadMaps();
+  } else {
+    showTransition();
+  }
+}
+
+function loadMaps() {
+  const s = document.createElement('script');
+  s.src = `https://maps.googleapis.com/maps/api/js?key=AIzaSyDqqoVANWr0IiHsosuPV42BUdSWoyhqHzA&callback=onMapsReady`;
+  s.async = true; s.defer = true;
+  document.head.appendChild(s);
+}
+
+window.onMapsReady = () => showTransition();
+
+// ═══════════════════════════════════════════
+//  TRANSITION "au suivant"
+// ═══════════════════════════════════════════
+function showTransition() {
+  const player = G.players[G.currentPlayerIdx];
+  const spot = G.roundSpots[G.currentRound];
+  const isFirst = G.currentRound === 0 && G.currentPlayerIdx === 0;
+
+  document.getElementById('trans-emoji').textContent = isFirst ? '🌍' : '🎯';
+  document.getElementById('trans-title').textContent = G.mode === 'multi'
+    ? `${player.name}, c'est ton tour !`
+    : `Round ${G.currentRound + 1} / ${G.totalRounds}`;
+  document.getElementById('trans-sub').textContent = G.mode === 'multi'
+    ? `Round ${G.currentRound + 1} / ${G.totalRounds} · Cache l'écran à ton adversaire !`
+    : 'Observe bien ton environnement...';
+  document.getElementById('btn-ready').textContent = G.mode === 'multi' ? `${player.name} — Je suis prêt !` : 'Commencer !';
+  document.getElementById('btn-ready').style.background = player.color;
+
+  document.getElementById('result-overlay').classList.remove('show');
+  document.getElementById('transition-overlay').classList.add('show');
+}
+
+function startPlayerTurn() {
+  document.getElementById('transition-overlay').classList.remove('show');
+  const player = G.players[G.currentPlayerIdx];
+  const spot = G.roundSpots[G.currentRound];
+
+  document.getElementById('round-num').textContent = G.currentRound + 1;
+  document.getElementById('active-player-name').textContent = player.name;
+  document.getElementById('active-player-name').style.color = player.color;
+  document.getElementById('guess-btn').style.background = player.color;
+  document.getElementById('guess-btn').disabled = true;
+  document.getElementById('map-hint').style.display = 'block';
+  G.mapExpanded = false;
+  document.getElementById('map-panel').className = 'sm';
+
+  updateScoresPanel();
+  initStreetView(spot.lat, spot.lng);
+  initMiniMap();
+
+  if (G.timerID) clearInterval(G.timerID);
+  G.timeLeft = TIMER_DURATION[G.diff];
+  updateTimer();
+  G.timerID = setInterval(() => {
+    G.timeLeft--; updateTimer();
+    if (G.timeLeft <= 0) { clearInterval(G.timerID); submitGuess(); }
+  }, 1000);
+}
+
+// ═══════════════════════════════════════════
+//  SCORES PANEL
+// ═══════════════════════════════════════════
+function updateScoresPanel() {
+  if (G.players.length === 1) { document.getElementById('scores-panel').style.display = 'none'; return; }
+  document.getElementById('scores-panel').innerHTML = G.players.map((p, i) => `
+    <div class="score-row ${i===G.currentPlayerIdx?'current-player':''}">
+      <span class="sname" style="color:${p.color}">${p.name}</span>
+      <span class="spts">${p.totalScore.toLocaleString('fr-FR')}</span>
+    </div>
+  `).join('');
+}
+
+// ═══════════════════════════════════════════
+//  TIMER
+// ═══════════════════════════════════════════
+function updateTimer() {
+  const el = document.getElementById('timer');
+  el.textContent = Math.max(0, G.timeLeft);
+  el.className = G.timeLeft <= 15 ? 'warn' : '';
+}
+
+// ═══════════════════════════════════════════
+//  STREET VIEW
+// ═══════════════════════════════════════════
+function initStreetView(lat, lng) {
+  const c = document.getElementById('sv-container');
+  c.innerHTML = '';
+  new google.maps.StreetViewPanorama(c, {
+    position: { lat, lng },
+    pov: { heading: Math.random() * 360, pitch: 0 },
+    zoom: 1,
+    addressControl: false, showRoadLabels: false,
+    fullscreenControl: false, motionTrackingControl: false,
+    enableCloseButton: false, clickToGo: true,
+    panControl: true, zoomControl: true, linksControl: true,
+  });
+}
+
+// ═══════════════════════════════════════════
+//  MINI-CARTE
+// ═══════════════════════════════════════════
+function initMiniMap() {
+  const el = document.getElementById('minimap');
+  el.innerHTML = ''; G.marker = null;
+  G.miniMap = new google.maps.Map(el, {
+    center: { lat: 20, lng: 0 }, zoom: 1,
+    disableDefaultUI: true, zoomControl: true,
+    styles: darkStyle(),
+  });
+  G.miniMap.addListener('click', e => {
+    const lat = e.latLng.lat(), lng = e.latLng.lng();
+    G.guesses[G.currentRound][G.currentPlayerIdx] = { lat, lng };
+    if (G.marker) G.marker.setMap(null);
+    G.marker = new google.maps.Marker({
+      position: { lat, lng }, map: G.miniMap,
+      icon: { path: google.maps.SymbolPath.CIRCLE, scale:8,
+        fillColor: G.players[G.currentPlayerIdx].color,
+        fillOpacity:1, strokeColor:'#fff', strokeWeight:2 },
+    });
+    document.getElementById('guess-btn').disabled = false;
+    document.getElementById('map-hint').style.display = 'none';
+  });
+}
+
+function toggleMap() {
+  G.mapExpanded = !G.mapExpanded;
+  document.getElementById('map-panel').className = G.mapExpanded ? 'lg' : 'sm';
+  setTimeout(() => google.maps.event.trigger(G.miniMap, 'resize'), 350);
+}
+
+// ═══════════════════════════════════════════
+//  DEVINER
+// ═══════════════════════════════════════════
+function submitGuess() {
+  if (G.timerID) clearInterval(G.timerID);
+  // Si pas de pin, place aléatoire
+  if (!G.guesses[G.currentRound][G.currentPlayerIdx]) {
+    G.guesses[G.currentRound][G.currentPlayerIdx] = {
+      lat: (Math.random()-.5)*140, lng: (Math.random()-.5)*320
+    };
+  }
+
+  const spot = G.roundSpots[G.currentRound];
+  const g = G.guesses[G.currentRound][G.currentPlayerIdx];
+  const dist = haversine(spot.lat, spot.lng, g.lat, g.lng);
+  const pts = calcScore(dist);
+  G.players[G.currentPlayerIdx].totalScore += pts;
+  G.players[G.currentPlayerIdx].roundScores.push({ spot: spot.label, dist: Math.round(dist), pts });
+
+  // Joueur suivant ou afficher résultat
+  const nextPlayerIdx = G.currentPlayerIdx + 1;
+  if (G.mode === 'multi' && nextPlayerIdx < G.players.length) {
+    G.currentPlayerIdx = nextPlayerIdx;
+    showTransition();
+  } else {
+    showRoundResult();
+  }
+}
+
+// ═══════════════════════════════════════════
+//  RÉSULTAT ROUND
+// ═══════════════════════════════════════════
+function showRoundResult() {
+  const spot = G.roundSpots[G.currentRound];
+  document.getElementById('res-round').textContent = G.currentRound + 1;
+  document.getElementById('result-place').textContent = `${spot.flag} ${spot.label}`;
+
+  // Classer les joueurs par distance croissante
+  const results = G.players.map((p, i) => {
+    const g = G.guesses[G.currentRound][i] || { lat:0, lng:0 };
+    const dist = haversine(spot.lat, spot.lng, g.lat, g.lng);
+    const pts = p.roundScores[p.roundScores.length - 1]?.pts ?? 0;
+    return { player: p, idx: i, dist: Math.round(dist), pts, guess: g };
+  }).sort((a,b) => a.dist - b.dist);
+
+  const winnerIdx = results[0].idx;
+  document.getElementById('players-results').innerHTML = results.map((r, rank) => `
+    <div class="player-result ${rank===0 && G.players.length>1 ? 'winner':''}">
+      <div>
+        ${rank===0 && G.players.length>1 ? '<span class="crown">👑</span>' : ''}
+        <span class="pr-name" style="color:${r.player.color}">${r.player.name}</span>
+        <div class="pr-dist">${r.dist.toLocaleString('fr-FR')} km</div>
+      </div>
+      <div class="pr-pts" style="color:${r.pts>=4000?'#69f0ae':r.pts>=2000?'#ffd54f':'#ef5350'}">
+        +${r.pts.toLocaleString('fr-FR')} pts
+      </div>
+    </div>
+  `).join('');
+
+  const isLast = G.currentRound >= G.totalRounds - 1;
+  document.getElementById('next-btn').textContent = isLast ? '🏆 Voir les résultats finaux' : 'Round suivant →';
+  document.getElementById('result-overlay').classList.add('show');
+
+  // Légende
+  document.getElementById('res-legend').innerHTML = `
+    <span><span class="dot" style="background:#4caf50"></span>Vrai lieu</span>
+    ${G.players.map((p,i) => `<span><span class="dot" style="background:${p.color}"></span>${p.name}</span>`).join('')}
+  `;
+
+  setTimeout(() => buildResultMap(spot, results), 80);
+}
+
+function buildResultMap(spot, results) {
+  const el = document.getElementById('res-map');
+  el.innerHTML = '';
+  G.resMap = new google.maps.Map(el, {
+    center: { lat: spot.lat, lng: spot.lng }, zoom: 2,
+    disableDefaultUI: true, styles: darkStyle(),
+  });
+
+  // Vrai lieu
+  new google.maps.Marker({
+    position: { lat: spot.lat, lng: spot.lng }, map: G.resMap,
+    icon: { path: google.maps.SymbolPath.CIRCLE, scale:11,
+      fillColor:'#4caf50', fillOpacity:1, strokeColor:'#fff', strokeWeight:2.5 },
+    title: 'Vrai lieu',
+  });
+
+  const bounds = new google.maps.LatLngBounds();
+  bounds.extend({ lat: spot.lat, lng: spot.lng });
+
+  results.forEach(r => {
+    new google.maps.Marker({
+      position: r.guess, map: G.resMap,
+      icon: { path: google.maps.SymbolPath.CIRCLE, scale:9,
+        fillColor: r.player.color, fillOpacity:1, strokeColor:'#fff', strokeWeight:2 },
+      title: r.player.name,
+    });
+    new google.maps.Polyline({
+      path: [{ lat: spot.lat, lng: spot.lng }, r.guess],
+      geodesic: true, map: G.resMap,
+      strokeColor: r.player.color, strokeOpacity:.7, strokeWeight:1.5,
+    });
+    bounds.extend(r.guess);
+  });
+
+  G.resMap.fitBounds(bounds, 40);
+}
+
+function nextTurn() {
+  document.getElementById('result-overlay').classList.remove('show');
+  const isLast = G.currentRound >= G.totalRounds - 1;
+  if (isLast) {
+    showEndScreen();
+  } else {
+    G.currentRound++;
+    G.currentPlayerIdx = 0;
+    showTransition();
+  }
+}
+
+// ═══════════════════════════════════════════
+//  FIN
+// ═══════════════════════════════════════════
+function showEndScreen() {
+  const sorted = [...G.players].sort((a,b) => b.totalScore - a.totalScore);
+  const winner = sorted[0];
+
+  const pct = winner.totalScore / (5000 * G.totalRounds);
+  const badge = pct>=.9?'🏆':pct>=.7?'🥈':pct>=.5?'🥉':pct>=.3?'🗺️':'🐣';
+
+  document.getElementById('end-winner-badge').textContent = G.players.length > 1 ? '🏆' : badge;
+  document.getElementById('end-winner-name').textContent = G.players.length > 1
+    ? `${winner.name} gagne !`
+    : winner.name;
+  document.getElementById('end-winner-name').style.color = winner.color;
+  document.getElementById('end-winner-sub').textContent = G.players.length > 1
+    ? `${winner.totalScore.toLocaleString('fr-FR')} pts · Champion de la géographie !`
+    : `${winner.totalScore.toLocaleString('fr-FR')} pts sur ${(5000*G.totalRounds).toLocaleString('fr-FR')}`;
+
+  document.getElementById('final-scores').innerHTML = sorted.map((p, i) => `
+    <div class="final-row ${i===0?'first':''}">
+      <span class="fname" style="color:${p.color}">${i===0?'🥇 ':i===1?'🥈 ':'🥉 '}${p.name}</span>
+      <span class="fpts">${p.totalScore.toLocaleString('fr-FR')}</span>
+    </div>
+  `).join('');
+
+  // Détail rounds
+  let detail = '<h3>Détail des rounds</h3>';
+  G.roundSpots.forEach((spot, ri) => {
+    detail += `<div style="margin:10px 0 4px;font-size:12px;color:var(--muted);font-weight:600">${spot.flag} ${spot.label}</div>`;
+    G.players.forEach(p => {
+      const rs = p.roundScores[ri];
+      if (!rs) return;
+      detail += `<div class="rdetail-row"><span style="color:${p.color}">${p.name}</span><span>${rs.dist.toLocaleString('fr-FR')} km</span><span class="rdpts">+${rs.pts.toLocaleString('fr-FR')}</span></div>`;
+    });
+  });
+  document.getElementById('rounds-detail').innerHTML = detail;
+  document.getElementById('end-overlay').classList.add('show');
+}
+
+function goHome() {
+  document.getElementById('end-overlay').classList.remove('show');
+  document.getElementById('game').style.display = 'none';
+  document.getElementById('setup-screen').style.display = 'flex';
+}
+
+// ═══════════════════════════════════════════
+//  UTILS
+// ═══════════════════════════════════════════
+function haversine(lat1,lng1,lat2,lng2) {
+  const R=6371, dLat=(lat2-lat1)*Math.PI/180, dLng=(lng2-lng1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+function calcScore(d) {
+  if (d < 0.5) return 5000;
+  return Math.max(0, Math.round(5000 * Math.exp(-d / 2000)));
+}
+
+function darkStyle() {
+  return [
+    {elementType:'geometry',stylers:[{color:'#0d1117'}]},
+    {elementType:'labels.text.fill',stylers:[{color:'#8c9bab'}]},
+    {elementType:'labels.text.stroke',stylers:[{color:'#0d1117'}]},
+    {featureType:'administrative',elementType:'geometry.stroke',stylers:[{color:'#394d5e'}]},
+    {featureType:'landscape.natural',elementType:'geometry',stylers:[{color:'#162032'}]},
+    {featureType:'poi',stylers:[{visibility:'off'}]},
+    {featureType:'road',elementType:'geometry',stylers:[{color:'#1e3a5f'}]},
+    {featureType:'road.highway',elementType:'geometry',stylers:[{color:'#2a5080'}]},
+    {featureType:'transit',stylers:[{visibility:'off'}]},
+    {featureType:'water',elementType:'geometry',stylers:[{color:'#0a1628'}]},
+  ];
+}
+
+window.addEventListener('resize', () => {
+  if (G.miniMap) google.maps.event.trigger(G.miniMap, 'resize');
+});
+</script>
+</body>
+</html>
